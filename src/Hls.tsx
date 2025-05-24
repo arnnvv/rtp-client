@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type JSX } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type JSX,
+} from "react";
 import Hls from "hls.js";
 
 function HLSViewer({
@@ -6,7 +12,7 @@ function HLSViewer({
   muted = true,
   controls = true,
   width = "100%",
-  height = "100vh",
+  height = "auto",
 }: {
   autoPlay?: boolean;
   muted?: boolean;
@@ -24,8 +30,6 @@ function HLSViewer({
     bitrate: number;
     resolution: string;
   } | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
-  const maxRetries = 5;
 
   const hlsUrl = "http://localhost:8080/hls/playlist.m3u8";
 
@@ -37,36 +41,43 @@ function HLSViewer({
       hlsRef.current = null;
     }
 
+    setIsLoading(true);
+    setError(null);
+
     if (Hls.isSupported()) {
+      console.log("HLS.js is supported. Initializing player.");
       const hls = new Hls({
-        maxBufferLength: 10,
-        maxMaxBufferLength: 20,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
         liveSyncDurationCount: 3,
-        liveMaxLatencyDurationCount: 5,
+        liveMaxLatencyDurationCount: 10,
         lowLatencyMode: true,
-        backBufferLength: 30,
+        backBufferLength: 90,
         enableWorker: true,
-        abrEwmaFastLive: 1,
-        abrEwmaSlowLive: 3,
-        maxStarvationDelay: 1,
-        maxLoadingDelay: 2,
-        maxFragLookUpTolerance: 0.1,
-        fragLoadingTimeOut: 10000,
-        manifestLoadingTimeOut: 5000,
+        abrEwmaFastLive: 1.0,
+        abrEwmaSlowLive: 3.0,
+        maxStarvationDelay: 4,
+        maxLoadingDelay: 4,
+        maxFragLookUpTolerance: 0.25,
+        fragLoadingTimeOut: 20000,
+        manifestLoadingTimeOut: 10000,
+        fragLoadingMaxRetry: 6,
+        manifestLoadingMaxRetry: 6,
+        fragLoadingRetryDelay: 1000,
+        manifestLoadingRetryDelay: 1000,
       });
 
       hlsRef.current = hls;
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        console.log("HLS: Manifest parsed");
+        console.log("HLS: Manifest parsed successfully.");
         setIsLoading(false);
         setError(null);
         setIsConnected(true);
-        setRetryCount(0);
-
         if (autoPlay && videoRef.current) {
+          videoRef.current.muted = muted;
           videoRef.current.play().catch((err) => {
-            console.error("Autoplay failed:", err);
+            console.error("HLS: Autoplay failed:", err);
             setError("Autoplay failed. Please click play manually.");
           });
         }
@@ -80,81 +91,105 @@ function HLSViewer({
             bitrate: Math.round(level.bitrate / 1000),
             resolution: `${level.width}x${level.height}`,
           });
+          console.log(
+            `HLS: Switched to level ${data.level}: ${level.width}x${level.height} @ ${Math.round(level.bitrate / 1000)} Kbps`,
+          );
         }
       });
 
       hls.on(Hls.Events.ERROR, (_, data) => {
-        console.error("HLS Error:", data);
-
+        console.error("HLS Error Event:", data);
         if (data.fatal) {
+          setError(`HLS Fatal Error: ${data.type} - ${data.details}`);
+          setIsConnected(false);
+          setIsLoading(false);
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              setError("Network error. Checking connection...");
-              setIsConnected(false);
-              if (retryCount < maxRetries) {
-                setTimeout(
-                  () => {
-                    setRetryCount((prev) => prev + 1);
-                    hls.startLoad();
-                  },
-                  2000 * (retryCount + 1),
-                );
+              console.log(
+                "HLS: Network error detected. Attempting to recover by reloading source...",
+              );
+              if (hlsRef.current) {
+                hlsRef.current.startLoad();
               } else {
-                setError(
-                  "Failed to connect after multiple attempts. Please refresh the page.",
-                );
+                setTimeout(() => initializeHLS(), 3000);
               }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              setError("Media error. Attempting recovery...");
-              hls.recoverMediaError();
+              console.log(
+                "HLS: Media error detected. Attempting to recover media error...",
+              );
+              if (hlsRef.current) {
+                hlsRef.current.recoverMediaError();
+              } else {
+                setTimeout(() => initializeHLS(), 3000);
+              }
               break;
             default:
-              setError("Fatal error occurred. Please refresh the page.");
-              hls.destroy();
-              hlsRef.current = null;
+              console.log(
+                "HLS: Unhandled fatal error. Destroying and re-initializing HLS player...",
+              );
+              if (hlsRef.current) {
+                hlsRef.current.destroy();
+                hlsRef.current = null;
+              }
+              setTimeout(() => initializeHLS(), 3000);
               break;
           }
+        } else {
+          console.warn(`HLS Non-Fatal Error: ${data.type} - ${data.details}`);
         }
       });
 
       hls.on(Hls.Events.FRAG_BUFFERED, () => {
-        setIsLoading(false);
+        if (isLoading) setIsLoading(false);
       });
 
+      hls.on(Hls.Events.DESTROYING, () => {
+        console.log("HLS: Instance is being destroyed.");
+      });
+
+      console.log("HLS: Loading source:", hlsUrl);
       hls.loadSource(hlsUrl);
-      hls.attachMedia(videoRef.current);
-    } else if (videoRef.current.canPlayType("application/vnd.apple.mpegurl")) {
-      console.log("Using native HLS support");
-      videoRef.current.src = hlsUrl;
-      setIsLoading(false);
-      setIsConnected(true);
-
-      videoRef.current.addEventListener("loadedmetadata", () => {
-        setError(null);
-        if (autoPlay) {
-          videoRef.current?.play().catch((err) => {
-            console.error("Autoplay failed:", err);
-            setError("Autoplay failed. Please click play manually.");
-          });
-        }
-      });
-
-      videoRef.current.addEventListener("error", (e) => {
-        setError("Video playback error occurred.");
-        setIsConnected(false);
-        console.error("Video error:", e);
-      });
+      if (videoRef.current) {
+        hls.attachMedia(videoRef.current);
+      }
+    } else if (videoRef.current?.canPlayType("application/vnd.apple.mpegurl")) {
+      console.log("HLS: Using native browser HLS support.");
+      if (videoRef.current) {
+        videoRef.current.src = hlsUrl;
+        videoRef.current.muted = muted;
+        setIsLoading(false);
+        videoRef.current.addEventListener("loadedmetadata", () => {
+          console.log("HLS Native: Metadata loaded.");
+          setError(null);
+          setIsConnected(true);
+          if (autoPlay && videoRef.current) {
+            videoRef.current.play().catch((err) => {
+              console.error("HLS Native: Autoplay failed:", err);
+              setError("Autoplay failed. Please click play manually.");
+            });
+          }
+        });
+        videoRef.current.addEventListener("error", (e) => {
+          console.error("HLS Native: Video playback error:", e);
+          setError("Native HLS playback error occurred.");
+          setIsConnected(false);
+          setIsLoading(false);
+        });
+      }
     } else {
-      setError("HLS is not supported in this browser.");
+      console.error(
+        "HLS: HLS.js is not supported and no native HLS support in this browser.",
+      );
+      setError("HLS playback is not supported in this browser.");
       setIsLoading(false);
     }
   };
 
   const retryConnection = () => {
+    console.log("HLS: Manual retry initiated.");
     setError(null);
     setIsLoading(true);
-    setRetryCount(0);
     initializeHLS();
   };
 
@@ -163,6 +198,7 @@ function HLSViewer({
 
     return () => {
       if (hlsRef.current) {
+        console.log("HLS: Cleaning up HLS instance on component unmount.");
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
@@ -171,160 +207,126 @@ function HLSViewer({
 
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (videoRef.current) {
-        if (document.hidden) {
-          videoRef.current.pause();
-        } else if (isConnected && !error) {
-          videoRef.current.play().catch(console.error);
-        }
+      if (!videoRef.current) return;
+      if (document.hidden) {
+        videoRef.current.pause();
+        console.log("HLS: Page hidden, video paused.");
+      } else if (isConnected && !error && autoPlay) {
+        videoRef.current
+          .play()
+          .catch((err) =>
+            console.error("HLS: Resume play on visibility failed:", err),
+          );
+        console.log("HLS: Page visible, video resumed.");
       }
     };
-
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () =>
+    return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [isConnected, error]);
+    };
+  }, [isConnected, error, autoPlay]);
 
   return (
     <div
-      style={{ width, height, backgroundColor: "#000", position: "relative" }}
+      style={{ width, height, position: "relative", backgroundColor: "#000" }}
     >
       <video
         ref={videoRef}
         controls={controls}
         muted={muted}
+        autoPlay={autoPlay}
         playsInline
-        style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "contain",
-        }}
+        style={{ width: "100%", height: "100%", display: "block" }}
       />
-
       {isLoading && (
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(0, 0, 0, 0.8)",
-            color: "white",
-            fontSize: "18px",
-          }}
-        >
-          <div style={{ textAlign: "center" }}>
-            <div style={{ marginBottom: "10px" }}>🔄</div>
-            <div>Loading live stream...</div>
-            {retryCount > 0 && (
-              <div style={{ fontSize: "14px", marginTop: "5px" }}>
-                Retry attempt: {retryCount}/{maxRetries}
-              </div>
-            )}
-          </div>
+        <div style={overlayStyle}>
+          Loading live stream...
+          {/* {retryCount > 0 && ` (Attempt: ${retryCount}/${maxRetries})`} */}
         </div>
       )}
-
       {error && (
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(0, 0, 0, 0.9)",
-            color: "white",
-            fontSize: "16px",
-          }}
-        >
-          <div
-            style={{ textAlign: "center", maxWidth: "400px", padding: "20px" }}
+        <div style={{ ...overlayStyle, color: "red", flexDirection: "column" }}>
+          <p>⚠️ {error}</p>
+          <button
+            onClick={retryConnection}
+            style={{ padding: "8px 16px", marginTop: "10px" }}
           >
-            <div style={{ marginBottom: "15px", fontSize: "24px" }}>⚠️</div>
-            <div style={{ marginBottom: "15px" }}>{error}</div>
-            <button
-              onClick={retryConnection}
-              style={{
-                padding: "10px 20px",
-                backgroundColor: "#007bff",
-                color: "white",
-                border: "none",
-                borderRadius: "5px",
-                cursor: "pointer",
-                fontSize: "14px",
-              }}
-            >
-              Retry Connection
-            </button>
-          </div>
+            Retry Connection
+          </button>
         </div>
       )}
-
-      <div
-        style={{
-          position: "absolute",
-          top: "10px",
-          right: "10px",
-          background: "rgba(0, 0, 0, 0.7)",
-          color: "white",
-          padding: "8px 12px",
-          borderRadius: "15px",
-          fontSize: "12px",
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-        }}
-      >
-        <div
-          style={{
-            width: "8px",
-            height: "8px",
-            borderRadius: "50%",
-            backgroundColor: isConnected ? "#4CAF50" : "#f44336",
-          }}
-        />
-        <span>{isConnected ? "LIVE" : "OFFLINE"}</span>
+      <div style={statusIndicatorStyle}>
+        {isConnected ? "● LIVE" : "● OFFLINE"}
       </div>
-
       {streamInfo && isConnected && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: "10px",
-            left: "10px",
-            background: "rgba(0, 0, 0, 0.7)",
-            color: "white",
-            padding: "8px 12px",
-            borderRadius: "5px",
-            fontSize: "12px",
-          }}
-        >
-          <div>Quality: {streamInfo.resolution}</div>
-          <div>Bitrate: {streamInfo.bitrate} Kbps</div>
+        <div style={streamInfoStyle}>
+          {streamInfo.resolution} @ {streamInfo.bitrate} Kbps (L
+          {streamInfo.level})
         </div>
       )}
     </div>
   );
 }
 
+const overlayStyle: CSSProperties = {
+  position: "absolute",
+  top: 0,
+  left: 0,
+  width: "100%",
+  height: "100%",
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  backgroundColor: "rgba(0,0,0,0.7)",
+  color: "white",
+  fontSize: "1.2em",
+  textAlign: "center",
+};
+
+const statusIndicatorStyle: CSSProperties = {
+  position: "absolute",
+  top: "10px",
+  left: "10px",
+  padding: "5px 10px",
+  backgroundColor: "rgba(0,0,0,0.6)",
+  color: "white",
+  borderRadius: "4px",
+  fontSize: "0.9em",
+};
+
+const streamInfoStyle: CSSProperties = {
+  position: "absolute",
+  bottom: "10px",
+  right: "10px",
+  padding: "5px 10px",
+  backgroundColor: "rgba(0,0,0,0.6)",
+  color: "white",
+  borderRadius: "4px",
+  fontSize: "0.8em",
+};
+
 export function HlsComp(): JSX.Element {
   const [fullscreen, setFullscreen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const toggleFullscreen = () => {
+    if (!containerRef.current) return;
+
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen();
-      setFullscreen(true);
+      containerRef.current
+        .requestFullscreen()
+        .then(() => {
+          setFullscreen(true);
+        })
+        .catch((err) => {
+          alert(
+            `Error attempting to enable full-screen mode: ${err.message} (${err.name})`,
+          );
+        });
     } else {
-      document.exitFullscreen();
-      setFullscreen(false);
+      document.exitFullscreen().then(() => {
+        setFullscreen(false);
+      });
     }
   };
 
@@ -332,7 +334,6 @@ export function HlsComp(): JSX.Element {
     const handleFullscreenChange = () => {
       setFullscreen(!!document.fullscreenElement);
     };
-
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () =>
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
@@ -340,74 +341,94 @@ export function HlsComp(): JSX.Element {
 
   return (
     <div
+      ref={containerRef}
       style={{
-        minHeight: "100vh",
-        backgroundColor: "#000",
+        backgroundColor: "#222",
+        padding: fullscreen ? "0" : "20px",
+        height: fullscreen ? "100vh" : "auto",
         display: "flex",
         flexDirection: "column",
+        alignItems: "center",
       }}
     >
       {!fullscreen && (
         <div
-          style={{
-            backgroundColor: "#1a1a1a",
-            color: "white",
-            padding: "15px 20px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
+          style={{ color: "white", marginBottom: "15px", textAlign: "center" }}
         >
-          <h1 style={{ margin: 0, fontSize: "24px" }}>
+          <h1 style={{ fontSize: "1.5em", marginBottom: "5px" }}>
             📺 Live Video Call Stream
           </h1>
-          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-            <span style={{ fontSize: "14px", color: "#ccc" }}>
-              Composite view of both participants
-            </span>
-            <button
-              onClick={toggleFullscreen}
-              style={{
-                padding: "8px 16px",
-                backgroundColor: "#007bff",
-                color: "white",
-                border: "none",
-                borderRadius: "5px",
-                cursor: "pointer",
-                fontSize: "14px",
-              }}
-            >
-              ⛶ Fullscreen
-            </button>
-          </div>
+          <p style={{ fontSize: "0.9em" }}>
+            Composite view of both participants
+          </p>
+          <p style={{ fontSize: "0.8em", color: "#aaa" }}>
+            Stream URL: http://localhost:8080/hls/playlist.m3u8
+          </p>
         </div>
       )}
 
-      <div style={{ flex: 1 }}>
-        <HLSViewer
-          autoPlay={true}
-          muted={true}
-          controls={true}
-          width="100%"
-          height={fullscreen ? "100vh" : "calc(100vh - 70px)"}
-        />
+      <div style={{ width: "100%", maxWidth: "960px", position: "relative" }}>
+        {" "}
+        {/* Aspect ratio container */}
+        <div
+          style={{
+            paddingTop: "56.25%",
+            position: "relative",
+            backgroundColor: "black",
+          }}
+        >
+          {" "}
+          {/* 16:9 aspect ratio */}
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              height: "100%",
+            }}
+          >
+            <HLSViewer
+              autoPlay={true}
+              muted={true}
+              controls={true}
+              width="100%"
+              height="100%"
+            />
+          </div>
+        </div>
       </div>
 
       {!fullscreen && (
-        <div
+        <button
+          onClick={toggleFullscreen}
           style={{
-            backgroundColor: "#1a1a1a",
-            color: "#ccc",
+            marginTop: "15px",
             padding: "10px 20px",
-            textAlign: "center",
-            fontSize: "12px",
+            fontSize: "1em",
+            cursor: "pointer",
           }}
         >
-          <p style={{ margin: 0 }}>
-            🔴 Live stream showing both participants side-by-side • Low latency
-            HLS streaming • Stream URL: http://localhost:8080/hls/playlist.m3u8
-          </p>
-        </div>
+          ⛶ Fullscreen
+        </button>
+      )}
+      {fullscreen && (
+        <button
+          onClick={toggleFullscreen}
+          style={{
+            position: "absolute",
+            top: "20px",
+            right: "20px",
+            zIndex: 1000,
+            padding: "10px",
+            background: "rgba(0,0,0,0.5)",
+            color: "white",
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          Exit Fullscreen
+        </button>
       )}
     </div>
   );

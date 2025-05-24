@@ -629,7 +629,6 @@ export function App(): JSX.Element {
     });
   }, [displayedRemoteStreams]);
 
-  // Calculate total participants (local + remote)
   const totalParticipants = displayedRemoteStreams.size + 1;
   const isCompositeStreamReady = totalParticipants === 2 && isStreamingToServer;
 
