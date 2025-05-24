@@ -5,6 +5,11 @@ export interface DirectSignalPayload {
   fromPeerID?: string;
 }
 
+export interface ServerSignalPayload {
+  sdp?: RTCSessionDescriptionInit;
+  candidate?: RTCIceCandidateInit;
+}
+
 export interface SDPPayload {
   sdp: RTCSessionDescriptionInit;
 }
@@ -26,6 +31,21 @@ export interface AnswerMessage {
 export interface CandidateMessage {
   type: "candidate";
   payload: CandidatePayload;
+}
+
+export interface ServerOfferMessage {
+  type: "server-offer";
+  payload: ServerSignalPayload;
+}
+
+export interface ServerAnswerMessage {
+  type: "server-answer";
+  payload: ServerSignalPayload;
+}
+
+export interface ServerCandidateMessage {
+  type: "server-candidate";
+  payload: ServerSignalPayload;
 }
 
 export interface DirectOfferMessage {
@@ -51,6 +71,9 @@ export interface InitiateP2PMessage {
 export type SignalingMessage =
   | AnswerMessage
   | CandidateMessage
+  | ServerOfferMessage
+  | ServerAnswerMessage
+  | ServerCandidateMessage
   | DirectOfferMessage
   | DirectAnswerMessage
   | DirectCandidateMessage
