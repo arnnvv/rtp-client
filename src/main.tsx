@@ -1,6 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { HlsComp } from "./Hls";
+import { Switch, Route } from "wouter";
 
 const rootElement = document.getElementById("root");
 
@@ -10,6 +12,9 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <App />
+    <Switch>
+      <Route path="/" component={App} />
+      <Route path="/watch" component={HlsComp} />
+    </Switch>
   </StrictMode>,
 );

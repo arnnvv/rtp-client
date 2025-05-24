@@ -17,11 +17,9 @@ export function App(): JSX.Element {
   const ws = useRef<WebSocket | null>(null);
   const [isWsConnected, setIsWsConnected] = useState(false);
   const [isStreamingToServer, setIsStreamingToServer] = useState(false);
-
   const serverPc = useRef<RTCPeerConnection | null>(null);
   const serverPcSenders = useRef<Map<string, RTCRtpSender>>(new Map());
   const pendingServerCandidates = useRef<RTCIceCandidateInit[]>([]);
-
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const remoteStreams = useRef<Map<string, MediaStream>>(new Map());
   const [displayedRemoteStreams, setDisplayedRemoteStreams] = useState<
@@ -30,7 +28,6 @@ export function App(): JSX.Element {
   const pendingP2PCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(
     new Map(),
   );
-
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
 
@@ -88,7 +85,6 @@ export function App(): JSX.Element {
 
     const offer = await serverPc.current.createOffer();
     await serverPc.current.setLocalDescription(offer);
-
     sendSignalingMessage({
       type: "server-offer",
       payload: {
@@ -158,24 +154,24 @@ export function App(): JSX.Element {
           pc.addTrack(track, localStream);
         }
       }
-
-      pc.onnegotiationneeded = async () => {
-        if (
-          pc.signalingState === "stable" &&
-          peerConnections.current.has(peerId)
-        ) {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          sendSignalingMessage({
-            type: "direct-offer",
-            payload: {
-              sdp: pc.localDescription?.toJSON(),
-              toPeerID: peerId,
-            } as DirectSignalPayload,
-          });
-        }
-      };
     }
+
+    pc.onnegotiationneeded = async () => {
+      if (
+        pc.signalingState === "stable" &&
+        peerConnections.current.has(peerId)
+      ) {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        sendSignalingMessage({
+          type: "direct-offer",
+          payload: {
+            sdp: pc.localDescription?.toJSON(),
+            toPeerID: peerId,
+          } as DirectSignalPayload,
+        });
+      }
+    };
 
     return pc;
   };
@@ -187,7 +183,6 @@ export function App(): JSX.Element {
     }
 
     const p2pPc = createP2PConnection(fromPeerID);
-
     if (p2pPc.getSenders().some((sender) => sender.track)) {
       p2pPc
         .createOffer()
@@ -227,7 +222,6 @@ export function App(): JSX.Element {
     sdp: RTCSessionDescriptionInit,
   ) => {
     if (fromPeerID === clientId) return;
-
     const p2pPc = createP2PConnection(fromPeerID);
     await p2pPc.setRemoteDescription(new RTCSessionDescription(sdp));
 
@@ -241,7 +235,6 @@ export function App(): JSX.Element {
 
     const answer = await p2pPc.createAnswer();
     await p2pPc.setLocalDescription(answer);
-
     if (p2pPc.localDescription) {
       sendSignalingMessage({
         type: "direct-answer",
@@ -258,7 +251,6 @@ export function App(): JSX.Element {
     sdp: RTCSessionDescriptionInit,
   ) => {
     if (fromPeerID === clientId) return;
-
     const p2pPc = peerConnections.current.get(fromPeerID);
     if (p2pPc) {
       await p2pPc.setRemoteDescription(new RTCSessionDescription(sdp));
@@ -278,7 +270,6 @@ export function App(): JSX.Element {
     candidateInit: RTCIceCandidateInit,
   ) => {
     if (fromPeerID === clientId) return;
-
     const p2pPc = peerConnections.current.get(fromPeerID);
     if (p2pPc) {
       if (p2pPc.remoteDescription && p2pPc.signalingState !== "closed") {
@@ -318,7 +309,6 @@ export function App(): JSX.Element {
             await serverPc.current.setRemoteDescription(
               new RTCSessionDescription(message.payload.sdp),
             );
-
             if (pendingServerCandidates.current.length > 0) {
               for (const candidate of pendingServerCandidates.current) {
                 await serverPc.current.addIceCandidate(
@@ -442,7 +432,6 @@ export function App(): JSX.Element {
         audio: true,
       });
       setLocalStream(stream);
-
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
@@ -454,7 +443,7 @@ export function App(): JSX.Element {
   const startScreenSharing = async () => {
     try {
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { displaySurface: "monitor" },
+        video: { displaySurface: "monitor" as any },
         audio: true,
       });
 
@@ -569,7 +558,6 @@ export function App(): JSX.Element {
     }
 
     let tracksChangedOrAddedToHLS = false;
-
     for (const track of currentLocalStream.getTracks()) {
       const existingSender = serverPcSenders.current.get(track.kind);
       if (existingSender) {
@@ -600,7 +588,6 @@ export function App(): JSX.Element {
   ) => {
     peerConnections.current.forEach(async (p2pPc, peerId) => {
       let p2pTracksChanged = false;
-
       for (const track of currentLocalStream.getTracks()) {
         const existingSender = p2pPc
           .getSenders()
@@ -642,125 +629,172 @@ export function App(): JSX.Element {
     });
   }, [displayedRemoteStreams]);
 
+  const totalParticipants = displayedRemoteStreams.size + 1;
+  const isCompositeStreamReady = totalParticipants === 2 && isStreamingToServer;
+
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-4">
+    <div className="min-h-screen bg-gray-100 p-4">
       <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6">
-          Stream Page (My ID: {clientId.substring(0, 8)})
+        <h1 className="text-3xl font-bold mb-6 text-center">
+          Video Call Composite Streaming (Participant:{" "}
+          {clientId.substring(0, 8)})
         </h1>
 
-        <div className="mb-6 space-y-4">
-          {!localStream ? (
-            <button
-              onClick={startStreaming}
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium"
-            >
-              Start Camera & Mic
-            </button>
-          ) : (
-            <div className="space-y-2">
-              <p className="text-green-400">Streaming active.</p>
-              {!isScreenSharing ? (
+        <div className="grid gap-6 md:grid-cols-2">
+          <div className="space-y-4">
+            <div className="bg-white p-4 rounded-lg shadow">
+              <h2 className="text-xl font-semibold mb-4">Stream Controls</h2>
+              {!localStream ? (
                 <button
-                  onClick={startScreenSharing}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg"
+                  onClick={startStreaming}
+                  className="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
                 >
-                  Share Screen
+                  Start Camera & Mic
                 </button>
               ) : (
-                <button
-                  onClick={stopScreenSharing}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg"
-                >
-                  Stop Screen Share
-                </button>
+                <div className="space-y-2">
+                  <p className="text-green-600 font-medium">
+                    ✓ Streaming active
+                  </p>
+                  {!isScreenSharing ? (
+                    <button
+                      onClick={startScreenSharing}
+                      className="w-full bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600"
+                    >
+                      Share Screen
+                    </button>
+                  ) : (
+                    <button
+                      onClick={stopScreenSharing}
+                      className="w-full bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
+                    >
+                      Stop Screen Share
+                    </button>
+                  )}
+                </div>
               )}
             </div>
-          )}
 
-          <div className="flex items-center space-x-4 text-sm">
-            <div
-              className={`flex items-center space-x-2 ${isWsConnected ? "text-green-400" : "text-red-400"}`}
-            >
-              <div
-                className={`w-2 h-2 rounded-full ${isWsConnected ? "bg-green-400" : "bg-red-400"}`}
-              ></div>
-              <span>
-                WebSocket: {isWsConnected ? "Connected" : "Disconnected"}
-              </span>
-            </div>
-
-            <div
-              className={`flex items-center space-x-2 ${isStreamingToServer ? "text-green-400" : "text-gray-400"}`}
-            >
-              <div
-                className={`w-2 h-2 rounded-full ${isStreamingToServer ? "bg-green-400" : "bg-gray-400"}`}
-              ></div>
-              <span>
-                HLS Stream: {isStreamingToServer ? "Active" : "Inactive"}
-              </span>
-            </div>
-          </div>
-
-          {isScreenSharing && (
-            <div className="text-red-400 font-medium">🔴 Screen Sharing</div>
-          )}
-
-          {isStreamingToServer && (
-            <div className="bg-blue-900 border border-blue-700 rounded-lg p-4">
-              <h3 className="font-medium mb-2">HLS Stream Available</h3>
-              <p className="text-sm text-gray-300 mb-2">
-                Share this URL with viewers:
-              </p>
-              <code className="block bg-gray-800 p-2 rounded text-sm break-all">
-                http://127.0.0.1:8080/hls/{clientId}/playlist.m3u8
-              </code>
-            </div>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <div className="bg-gray-800 rounded-lg p-4">
-            <h3 className="text-lg font-medium mb-3">
-              Your Video ({clientId.substring(0, 8)})
-            </h3>
-            {isScreenSharing && (
-              <div className="text-yellow-400 text-sm mb-2">[Screen]</div>
-            )}
-            <video
-              ref={localVideoRef}
-              autoPlay
-              muted
-              playsInline
-              className="w-full bg-gray-700 rounded aspect-video"
-              style={{ maxHeight: "400px" }}
-            />
-          </div>
-
-          {Array.from(displayedRemoteStreams.entries()).map(
-            ([peerId, stream]) => (
-              <div key={peerId} className="bg-gray-800 rounded-lg p-4">
-                <h3 className="text-lg font-medium mb-3">
-                  Remote Stream from {peerId.substring(0, 8)}
-                </h3>
-                <video
-                  ref={(el) => {
-                    if (el) {
-                      remoteVideoRefs.current.set(peerId, el);
-                      if (el.srcObject !== stream) el.srcObject = stream;
-                    } else {
-                      remoteVideoRefs.current.delete(peerId);
+            <div className="bg-white p-4 rounded-lg shadow">
+              <h2 className="text-xl font-semibold mb-2">Connection Status</h2>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span>WebSocket:</span>
+                  <span
+                    className={
+                      isWsConnected ? "text-green-600" : "text-red-600"
                     }
-                  }}
-                  autoPlay
-                  playsInline
-                  className="w-full bg-gray-700 rounded aspect-video"
-                  style={{ maxHeight: "400px" }}
-                  controls
-                />
+                  >
+                    {isWsConnected ? "Connected" : "Disconnected"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>HLS Stream:</span>
+                  <span
+                    className={
+                      isStreamingToServer ? "text-green-600" : "text-red-600"
+                    }
+                  >
+                    {isStreamingToServer ? "Active" : "Inactive"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Participants:</span>
+                  <span className="font-medium">{totalParticipants}/2</span>
+                </div>
+                {isCompositeStreamReady && (
+                  <div className="text-green-600 font-medium">
+                    ✓ Composite stream ready
+                  </div>
+                )}
               </div>
-            ),
-          )}
+            </div>
+
+            {isScreenSharing && (
+              <div className="bg-purple-100 p-4 rounded-lg">
+                <p className="text-purple-800 font-medium">
+                  🔴 Screen Sharing Active
+                </p>
+              </div>
+            )}
+
+            {isStreamingToServer && totalParticipants === 2 && (
+              <div className="bg-green-100 p-4 rounded-lg">
+                <h3 className="font-bold text-green-800 mb-2">
+                  Composite HLS Stream Available
+                </h3>
+                <p className="text-green-700 mb-2">
+                  Live stream showing both participants side-by-side:
+                </p>
+                <code className="block p-2 bg-green-200 rounded text-sm break-all">
+                  http://127.0.0.1:8080/hls/playlist.m3u8
+                </code>
+                <p className="text-sm text-green-600 mt-2">
+                  ✓ Both participants connected - Composite stream active
+                </p>
+              </div>
+            )}
+
+            {isStreamingToServer && totalParticipants === 1 && (
+              <div className="bg-yellow-100 p-4 rounded-lg">
+                <h3 className="font-bold text-yellow-800 mb-2">
+                  Waiting for Second Participant
+                </h3>
+                <p className="text-yellow-700">
+                  Composite HLS stream will start when both participants join
+                  the call.
+                </p>
+                <p className="text-sm text-yellow-600 mt-2">
+                  Share your client ID with the other participant: <br />
+                  <code className="bg-yellow-200 px-1 rounded">{clientId}</code>
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <div className="bg-white p-4 rounded-lg shadow">
+              <h3 className="font-medium mb-2">
+                Your Video ({clientId.substring(0, 8)})
+                {isScreenSharing && (
+                  <span className="ml-2 text-purple-600 text-sm">[Screen]</span>
+                )}
+              </h3>
+              <video
+                ref={localVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full bg-gray-700 rounded aspect-video"
+                style={{ maxHeight: "300px" }}
+              />
+            </div>
+
+            {Array.from(displayedRemoteStreams.entries()).map(
+              ([peerId, stream]) => (
+                <div key={peerId} className="bg-white p-4 rounded-lg shadow">
+                  <h3 className="font-medium mb-2">
+                    Remote Stream from {peerId.substring(0, 8)}
+                  </h3>
+                  <video
+                    ref={(el) => {
+                      if (el) {
+                        remoteVideoRefs.current.set(peerId, el);
+                        if (el.srcObject !== stream) el.srcObject = stream;
+                      } else {
+                        remoteVideoRefs.current.delete(peerId);
+                      }
+                    }}
+                    autoPlay
+                    playsInline
+                    className="w-full bg-gray-700 rounded aspect-video"
+                    style={{ maxHeight: "300px" }}
+                    controls
+                  />
+                </div>
+              ),
+            )}
+          </div>
         </div>
       </div>
     </div>
