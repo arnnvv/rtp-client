@@ -629,6 +629,7 @@ export function App(): JSX.Element {
     });
   }, [displayedRemoteStreams]);
 
+  // Calculate total participants (local + remote)
   const totalParticipants = displayedRemoteStreams.size + 1;
   const isCompositeStreamReady = totalParticipants === 2 && isStreamingToServer;
 
@@ -718,7 +719,7 @@ export function App(): JSX.Element {
               </div>
             )}
 
-            {isStreamingToServer && totalParticipants === 2 && (
+            {isCompositeStreamReady && (
               <div className="bg-green-100 p-4 rounded-lg">
                 <h3 className="font-bold text-green-800 mb-2">
                   Composite HLS Stream Available
@@ -735,7 +736,7 @@ export function App(): JSX.Element {
               </div>
             )}
 
-            {isStreamingToServer && totalParticipants === 1 && (
+            {isStreamingToServer && !isCompositeStreamReady && (
               <div className="bg-yellow-100 p-4 rounded-lg">
                 <h3 className="font-bold text-yellow-800 mb-2">
                   Waiting for Second Participant
@@ -746,7 +747,9 @@ export function App(): JSX.Element {
                 </p>
                 <p className="text-sm text-yellow-600 mt-2">
                   Share your client ID with the other participant: <br />
-                  <code className="bg-yellow-200 px-1 rounded">{clientId}</code>
+                  <code className="bg-yellow-200 px-1 rounded">
+                    http://127.0.0.1:8080/hls/playlist.m3u8
+                  </code>
                 </p>
               </div>
             )}

@@ -261,12 +261,6 @@ function HLSViewer({
                 cursor: "pointer",
                 fontSize: "14px",
               }}
-              onMouseOver={(e) =>
-                (e.currentTarget.style.backgroundColor = "#0056b3")
-              }
-              onMouseOut={(e) =>
-                (e.currentTarget.style.backgroundColor = "#007bff")
-              }
             >
               Retry Connection
             </button>
