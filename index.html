@@ -1,13 +1,70 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React + TS</title>
+    <title>Stream</title>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <h1>WebRTC Stream</h1>
+
+    <div>
+      <p>
+        <strong>Your Client ID:</strong>
+        <span id="client-id-display"></span>
+      </p>
+      <p>
+        <strong>WebSocket:</strong>
+        <span id="ws-status">Connecting...</span>
+      </p>
+      <p>
+        <strong>HLS Stream to Server:</strong>
+        <span id="hls-status">Inactive</span>
+      </p>
+      <p>
+        <strong>Participants:</strong>
+        <span id="participants-count">1/2</span>
+      </p>
+      <p>
+        <strong>Composite Stream:</strong>
+        <span id="composite-ready-status">Not Ready</span>
+      </p>
+    </div>
+
+    <div id="screen-sharing-notice" hidden>
+      <p><strong>You are sharing your screen.</strong></p>
+    </div>
+    <div id="composite-ready-notice" hidden>
+      <p><strong>Composite stream is ready for viewing.</strong></p>
+    </div>
+    <div id="waiting-notice" hidden>
+      <p><em>Waiting for the second participant to join...</em></p>
+    </div>
+
+    <hr />
+
+    <div>
+      <button id="start-stream-btn">Start My Camera</button>
+      <div id="active-controls" hidden>
+        <button id="share-screen-btn">Share Screen</button>
+        <button id="stop-share-btn" hidden>Stop Sharing Screen</button>
+      </div>
+    </div>
+
+    <hr />
+
+    <div>
+      <h3>
+        My Video (<span id="local-video-label"></span
+        ><span id="local-video-screen-label" hidden>- Screen</span>)
+      </h3>
+      <video id="local-video" autoplay muted playsinline controls></video>
+    </div>
+
+    <div id="remote-videos-container">
+    </div>
+
+    <script type="module" src="/main.ts"></script>
   </body>
 </html>

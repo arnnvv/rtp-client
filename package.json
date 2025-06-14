@@ -2,24 +2,13 @@
   "name": "rtp",
   "type": "module",
   "scripts": {
-    "d": "vite",
-    "b": "tsc -b && vite build",
-    "l": "biome lint --write .",
     "f": "biome format --write .",
-    "p": "vite preview"
-  },
-  "dependencies": {
-    "hls.js": "1.6.2",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "wouter": "3.7.0"
+    "l": "biome lint --write .",
+    "b": "tsc && vite build",
+    "d": "vite preview"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
-    "@types/react": "19.1.5",
-    "@types/react-dom": "19.1.5",
-    "@vitejs/plugin-react": "4.5.0",
-    "babel-plugin-react-compiler": "19.1.0-rc.2",
     "typescript": "5.8.3",
     "vite": "6.3.5"
   }
